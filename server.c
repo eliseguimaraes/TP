@@ -14,11 +14,12 @@ int main(int argc, char**argv) {
     struct sockaddr_in6 cliaddr;
     struct addrinfo hints, *res;
     char received[256], sent[256], string[256];
+    char buffer[INET6_ADDRSTRLEN];
     FILE *arquivo;
 
-    if (argc != 4) {
+    if (argc != 2) {
         printf("%d argumentos\n",argc);
-        printf("Argumentos necessarios: host do servidor, porta e nome do diretorio.\n");
+        printf("Argumentos necessarios: porta.\n");
         exit(1);
     }
 
@@ -27,7 +28,7 @@ int main(int argc, char**argv) {
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_protocol = 0;
 
-    ret = getaddrinfo(NULL,argv[2],&hints,&res);
+    ret = getaddrinfo(NULL,argv[1],&hints,&res);
     if(ret) {
         printf("Endereço inválido.");
         exit(1);
@@ -54,19 +55,31 @@ int main(int argc, char**argv) {
         exit(1);
     }
     puts("Conectado ao cliente.\n");
-    strcpy(string, argv[1]); //host do servidor
-    strcat(string, argv[3]); //nome do diretório
-    strcat(string, ".txt");
-    arquivo = fopen(string,"w"); //abre o arquivo
+
     n = recv(conn,received,sizeof(received),0);
     received[n] = 0;
     if(!strcmp(received, "READY")) {
         strcpy(sent,"READY ACK");
         send(conn,sent,strlen(sent),0);
+        //recebimendo do nome do diretório
+        n = recv(conn, received, 3, 0);
+        received[n]=0;
+        tamanho = atoi(received);
+        n = recv(conn, received, tamanho, 0);
+        received[n]=0;
+        //abrindo o arquivo
+        if (getnameinfo((struct sockaddr*)&cliaddr,len,buffer,sizeof(buffer),0,0,NI_NUMERICHOST)) { //conversão do ip do cliente para string
+            printf("failed to convert address to string");
+            exit(1);
+        }
+        strcpy(string, buffer); //host do cliente
+        strcat(string, received); //nome do diretório
+        strcat(string, ".txt");
+        arquivo = fopen(string,"w"); //abre o arquivo
         //início do recebimento da lista de arquivos
         while (n = recv(conn,received,3,0)) { //lê primeiro o tamanho da mensagem que seguirá
             received[n] = 0;
-            tamanho = atoi(received); //converte o tamanho para inteiro, que será o tamanho do buffer da próxima leitura
+            tamanho = atoi(received); //converte a string para inteiro, que será o tamanho do buffer da próxima leitura
             n = recv(conn,received,tamanho,0);
             received[n] = 0;
             if (received[0]=='b'&&received[1]=='y') {
@@ -84,7 +97,7 @@ int main(int argc, char**argv) {
                 }
             }
             puts(received);
-            fprintf(arquivo, "%s",received);
+            fprintf(arquivo, "%s\n",received);
         }
 
     }
