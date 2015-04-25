@@ -9,158 +9,102 @@
 #include <errno.h>
 #include <stdlib.h>
 
-struct node {
-    char fileName[256];
-    struct node *next;
-};
 int main(int argc, char**argv) {
-    int s,n,ret, byte_count, time, tamanho;
-    struct addrinfo hints, *res = NULL;
-    struct timeval tv0, tv1;
-    char sent[256];
-    char received[256];
-    char tamanho_string[10];
-    DIR *d;
-    char *dir = argv[3]; //nome do diretório
-    struct node *root;
-    struct node *position;
-    FILE* arquivo;
+    int s, ret, len, n, conn,tamanho;
+    struct sockaddr_in6 cliaddr;
+    struct addrinfo hints, *res;
+    char received[256], sent[256], string[256];
+    char buffer[INET6_ADDRSTRLEN];
+    FILE *arquivo;
+    pid_t child;
 
-    if (argc != 4) {
-        printf("Argumentos necessarios: host do servidor, porta e nome do diretorio.\n");
+    if (argc != 2) {
+        printf("%d argumentos\n",argc);
+        printf("Argumentos necessarios: porta.\n");
         exit(1);
     }
 
+    hints.ai_flags = AI_PASSIVE;
+    hints.ai_family = AF_INET6;
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_protocol = 0;
 
-    root = malloc(sizeof(struct node));
-
-
-
-    bzero(&hints, sizeof(hints)); //limpa a variável
-
-
-    hints.ai_family = PF_UNSPEC; //tipo do endereço não especificado
-    hints.ai_flags = AI_NUMERICHOST;
-
-    ret = getaddrinfo(argv[1], argv[2], &hints, &res);
-
+    ret = getaddrinfo(NULL,argv[1],&hints,&res);
     if(ret) {
         printf("Endereço inválido.");
         exit(1);
     }
 
-    s = socket(res->ai_family,SOCK_STREAM,0);
-    puts("socket criado\n");
+    s=socket(res->ai_family,SOCK_STREAM,0);
+    puts("socket criado.\n");
 
 
-    connect(s, res->ai_addr, res->ai_addrlen);//I'm gonna do an Internet
-    puts("conectado\n");
+    bind(s,res->ai_addr,res->ai_addrlen);
+    puts("bind\n");
 
-    strcpy(sent,"READY");
-
-    //inicia contagem de bytes e do tempo
-    byte_count = 0;
-    gettimeofday(&tv0,0);
-    n = send(s,sent, strlen(sent),0); //envia "READY"
-    while (n==-1) {
-        printf("Erro ao enviar mensagem.");
-        n = send(s, sent, strlen(sent),0);
-    }
-    byte_count += n;
-
-    n = recv(s,received,sizeof(received),0); //recebe mensagem do server
-    received[n] = 0;
-    byte_count += n;
-
-    if (strcmp(received, "READY ACK") != 0) {
-        printf("Mensagem inesperada recebida: %s",received);
+    if (listen(s,10) == -1) {
+        printf("\nErro ao aguardar conexão: %s", strerror(errno));
         exit(1);
     }
 
-    strcpy(sent, argv[3]); //nome do diretório
-    tamanho = strlen(sent);//tamanho da mensagem
-    sprintf(tamanho_string, "%03d",tamanho); //concatena ao início de cada mensagem o seu tamanho
-    strcat(tamanho_string, sent);
-    strcpy(sent, tamanho_string);
-    n = send(s,sent, strlen(sent),0); //envia o nome do diretório
-
-    while (n==-1) {
-        printf("Erro ao enviar mensagem.");
-        n = send(s, sent, strlen(sent),0);
-    }
-    byte_count += n;
-
-    d = opendir(dir); //abre o diretório
-    if (!d) {
-        printf("Erro ao abrir local dos arquivos '%s': %s.", dir, strerror(errno));
-        exit(1);
-    }
-
-    position = root;
-    root -> next = 0;
     while (1) {
-        struct dirent *file;
-        file = readdir(d);
-        if(!file) { //fim do diretório
-            position->next = 0;
-            break;
+        len=sizeof(cliaddr);
+        conn = accept(s,(struct sockaddr *)&cliaddr,&len);
+
+        if(conn == -1) {
+            perror("Erro ao aceitar conexão.\n");
+            exit(1);
         }
-        char dirList[256];
-        strcpy(dirList, file->d_name);
-        if (dirList[0]=='b'&&dirList[1]=='y') { //evitar arquivos com nome "bye"
-            int i;
-            char aux[256];
-            strcpy(aux,dirList);
-            for (i=2; i<=strlen(dirList); i++) { //"bit stuffing" na string
-                dirList[i+1] = aux[i];
+        puts("Conectado ao cliente.\n");
+
+        if ((child = fork())==0) { //caso seja processo filho
+            close(s);
+            n = recv(conn,received,sizeof(received),0);
+            received[n] = 0;
+            if(!strcmp(received, "READY")) {
+                strcpy(sent,"READY ACK");
+                send(conn,sent,strlen(sent),0);
+                //recebimendo do nome do diretório
+                n = recv(conn, received, 3, 0);
+                received[n]=0;
+                tamanho = atoi(received);
+                n = recv(conn, received, tamanho, 0);
+                received[n]=0;
+                //abrindo o arquivo
+                if (getnameinfo((struct sockaddr*)&cliaddr,len,buffer,sizeof(buffer),0,0,NI_NUMERICHOST)) { //conversão do ip do cliente para string
+                    printf("failed to convert address to string");
+                    exit(1);
+                }
+                strcpy(string, buffer); //host do cliente
+                strcat(string, received); //nome do diretório
+                strcat(string, ".txt");
+                arquivo = fopen(string,"w"); //abre o arquivo
+                //início do recebimento da lista de arquivos
+                while (n = recv(conn,received,3,0)) { //lê primeiro o tamanho da mensagem que seguirá
+                    received[n] = 0;
+                    tamanho = atoi(received); //converte a string para inteiro, que será o tamanho do buffer da próxima leitura
+                    n = recv(conn,received,tamanho,0);
+                    received[n] = 0;
+                    if (received[0]=='b'&&received[1]=='y') {
+                        if (received[2]=='e') { //fim da comunicação, anunciado por "bye"
+                            fclose(arquivo); //salva e fecha o arquivo
+                            close(conn); //fim da conexão
+                        }
+                        else { //bit stuffing. remover caracter inserido
+                            int i;
+                            for (i = 2; i<strlen(received)-1;i++) {
+                                received[i] = received[i+1];
+                            }
+                            received[n-1] = 0;
+                        }
+                    }
+                    puts(received);
+                    fprintf(arquivo, "%s\n",received);
+                }
+
             }
-            dirList[2] = 'y';
         }
-        strcpy(position->fileName,dirList);
-        position->next = malloc(sizeof(struct node));
-        position = position->next;
     }
 
-    if (closedir(d)) {//fecha o diretório
-        printf("Erro ao fechar local dos arquivos.");
-        exit(1);
-    }
-    position = root;
-    while (position->next!=0) {
-        strcpy(sent, position->fileName);
-        tamanho = strlen(sent);//tamanho da mensagem
-        sprintf(tamanho_string, "%03d",tamanho); //concatena ao início de cada mensagem o seu tamanho
-        strcat(tamanho_string, sent);
-        strcpy(sent, tamanho_string);
-        puts(sent);
-        n = send(s,sent, strlen(sent),0); //envia tamanho da mensagem + nome do arquivo
-        while (n==-1) {
-            printf("Erro ao enviar mensagem.");
-            n = send(s, sent, strlen(sent),0);
-        }
-        byte_count += n;
-        position = position->next;
-    }
-    strcpy(sent, "bye");
-    tamanho = strlen(sent);//tamanho da mensagem
-    sprintf(tamanho_string, "%03d",tamanho);
-    strcat(tamanho_string, sent);
-    strcpy(sent, tamanho_string);
-    puts(sent);
-    n = send(s,sent, strlen(sent),0); //envia "bye"
-    while (n==-1) {
-        printf("Erro ao enviar mensagem.");
-        n = send(s, sent, strlen(sent),0);
-    }
-    byte_count += n;
-
-    close(s); //encerra a conexão
-
-    gettimeofday(&tv1,0); //finaliza a contagem de tempo
-    long total = (tv1.tv_sec - tv0.tv_sec)*1000000 + tv1.tv_usec - tv0.tv_usec; //tempo decorrido, em microssegundos
-    printf("\nDesempenho: \nBytes enviados: %d \nTempo decorrido (microssegundos): %ld\nThroughput: %f bytes/segundo\n", byte_count, total, (float)byte_count*1000000/total);
-    arquivo = fopen("resultados.txt","a"); //abre o arquivo para salvar os dados
-    fprintf(arquivo, "\nDesempenho: \nBytes enviados: %d \nTempo decorrido (microssegundos): %ld\nThroughput: %f bytes/segundo\n", byte_count, total, (float)byte_count*1000000/total);
-    fclose(arquivo);
     return 0;
 }
