@@ -16,6 +16,7 @@ int main(int argc, char**argv) {
     char received[256], sent[256], string[256];
     char buffer[INET6_ADDRSTRLEN];
     FILE *arquivo;
+    pid_t child;
 
     if (argc != 2) {
         printf("%d argumentos\n",argc);
@@ -46,60 +47,63 @@ int main(int argc, char**argv) {
         exit(1);
     }
 
+    while (1) {
+        len=sizeof(cliaddr);
+        conn = accept(s,(struct sockaddr *)&cliaddr,&len);
 
-    len=sizeof(cliaddr);
-    conn = accept(s,(struct sockaddr *)&cliaddr,&len);
-
-    if(conn == -1) {
-        perror("Erro ao aceitar conexão.\n");
-        exit(1);
-    }
-    puts("Conectado ao cliente.\n");
-
-    n = recv(conn,received,sizeof(received),0);
-    received[n] = 0;
-    if(!strcmp(received, "READY")) {
-        strcpy(sent,"READY ACK");
-        send(conn,sent,strlen(sent),0);
-        //recebimendo do nome do diretório
-        n = recv(conn, received, 3, 0);
-        received[n]=0;
-        tamanho = atoi(received);
-        n = recv(conn, received, tamanho, 0);
-        received[n]=0;
-        //abrindo o arquivo
-        if (getnameinfo((struct sockaddr*)&cliaddr,len,buffer,sizeof(buffer),0,0,NI_NUMERICHOST)) { //conversão do ip do cliente para string
-            printf("failed to convert address to string");
+        if(conn == -1) {
+            perror("Erro ao aceitar conexão.\n");
             exit(1);
         }
-        strcpy(string, buffer); //host do cliente
-        strcat(string, received); //nome do diretório
-        strcat(string, ".txt");
-        arquivo = fopen(string,"w"); //abre o arquivo
-        //início do recebimento da lista de arquivos
-        while (n = recv(conn,received,3,0)) { //lê primeiro o tamanho da mensagem que seguirá
-            received[n] = 0;
-            tamanho = atoi(received); //converte a string para inteiro, que será o tamanho do buffer da próxima leitura
-            n = recv(conn,received,tamanho,0);
-            received[n] = 0;
-            if (received[0]=='b'&&received[1]=='y') {
-                if (received[2]=='e') { //fim da comunicação, anunciado por "bye"
-                    fclose(arquivo); //salva e fecha o arquivo
-                    close(conn); //fim da conexão
-                    return 0;
-                }
-                else { //bit stuffing. remover caracter inserido
-                    int i;
-                    for (i = 2; i<strlen(received)-1;i++) {
-                        received[i] = received[i+1];
-                    }
-                    received[n-1] = 0;
-                }
-            }
-            puts(received);
-            fprintf(arquivo, "%s\n",received);
-        }
+        puts("Conectado ao cliente.\n");
 
+        if ((child = fork())==0) { //caso seja processo filho
+            close(s);
+            n = recv(conn,received,sizeof(received),0);
+            received[n] = 0;
+            if(!strcmp(received, "READY")) {
+                strcpy(sent,"READY ACK");
+                send(conn,sent,strlen(sent),0);
+                //recebimendo do nome do diretório
+                n = recv(conn, received, 3, 0);
+                received[n]=0;
+                tamanho = atoi(received);
+                n = recv(conn, received, tamanho, 0);
+                received[n]=0;
+                //abrindo o arquivo
+                if (getnameinfo((struct sockaddr*)&cliaddr,len,buffer,sizeof(buffer),0,0,NI_NUMERICHOST)) { //conversão do ip do cliente para string
+                    printf("failed to convert address to string");
+                    exit(1);
+                }
+                strcpy(string, buffer); //host do cliente
+                strcat(string, received); //nome do diretório
+                strcat(string, ".txt");
+                arquivo = fopen(string,"w"); //abre o arquivo
+                //início do recebimento da lista de arquivos
+                while (n = recv(conn,received,3,0)) { //lê primeiro o tamanho da mensagem que seguirá
+                    received[n] = 0;
+                    tamanho = atoi(received); //converte a string para inteiro, que será o tamanho do buffer da próxima leitura
+                    n = recv(conn,received,tamanho,0);
+                    received[n] = 0;
+                    if (received[0]=='b'&&received[1]=='y') {
+                        if (received[2]=='e') { //fim da comunicação, anunciado por "bye"
+                            fclose(arquivo); //salva e fecha o arquivo
+                            close(conn); //fim da conexão
+                        }
+                        else { //bit stuffing. remover caracter inserido
+                            int i;
+                            for (i = 2; i<strlen(received)-1;i++) {
+                                received[i] = received[i+1];
+                            }
+                            received[n-1] = 0;
+                        }
+                    }
+                    puts(received);
+                    fprintf(arquivo, "%s\n",received);
+                }
+
+            }
+        }
     }
 
     return 0;
