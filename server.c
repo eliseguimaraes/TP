@@ -85,14 +85,14 @@ int main(int argc, char**argv) {
                     tamanho = atoi(received); //converte a string para inteiro, que será o tamanho do buffer da próxima leitura
                     n = recv(conn,received,tamanho,0);
                     received[n] = 0;
-                    if (received[0]=='b'&&received[1]=='y') {
-                        if (received[2]=='e') { //fim da comunicação, anunciado por "bye"
+                    if (received[0]=='t'&&received[1]=='c'&&received[2]=='h'&&received[3]=='a') {
+                        if (received[4]=='u') { //fim da comunicação, anunciado por "tchau"
                             fclose(arquivo); //salva e fecha o arquivo
                             close(conn); //fim da conexão
                         }
                         else { //bit stuffing. remover caracter inserido
                             int i;
-                            for (i = 2; i<strlen(received)-1;i++) {
+                            for (i = 4; i<strlen(received)-1;i++) {
                                 received[i] = received[i+1];
                             }
                             received[n-1] = 0;
