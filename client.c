@@ -116,14 +116,14 @@ int main(int argc, char**argv) {
         }
         char dirList[256];
         strcpy(dirList, file->d_name);
-        if (dirList[0]=='b'&&dirList[1]=='y') { //evitar arquivos com nome "bye"
+        if (dirList[0]=='t'&&dirList[1]=='c'&&dirList[2]=='h') { //evitar arquivos com nome "tchau"
             int i;
             char aux[256];
             strcpy(aux,dirList);
-            for (i=2; i<=strlen(dirList); i++) { //"bit stuffing" na string
+            for (i=3; i<=strlen(dirList); i++) { //"bit stuffing" na string
                 dirList[i+1] = aux[i];
             }
-            dirList[2] = 'y';
+            dirList[3] = '3';
         }
         strcpy(position->fileName,dirList);
         position->next = malloc(sizeof(struct node));
@@ -150,13 +150,13 @@ int main(int argc, char**argv) {
         byte_count += n;
         position = position->next;
     }
-    strcpy(sent, "bye");
+    strcpy(sent, "tchau");
     tamanho = strlen(sent);//tamanho da mensagem
     sprintf(tamanho_string, "%03d",tamanho);
     strcat(tamanho_string, sent);
     strcpy(sent, tamanho_string);
     puts(sent);
-    n = send(s,sent, strlen(sent),0); //envia "bye"
+    n = send(s,sent, strlen(sent),0); //envia "tchau"
     while (n==-1) {
         printf("Erro ao enviar mensagem.");
         n = send(s, sent, strlen(sent),0);
