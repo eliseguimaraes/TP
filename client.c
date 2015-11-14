@@ -116,14 +116,14 @@ int main(int argc, char**argv) {
         }
         char dirList[256];
         strcpy(dirList, file->d_name);
-        if (dirList[0]=='t'&&dirList[1]=='c'&&dirList[2]=='h') { //evitar arquivos com nome "tchau"
+        if (dirList[0]=='t'&&dirList[1]=='c'&&dirList[2]=='h'&&dirList[3]=='a') { //evitar arquivos com nome "tchau"
             int i;
             char aux[256];
             strcpy(aux,dirList);
-            for (i=3; i<=strlen(dirList); i++) { //"bit stuffing" na string
+            for (i=4; i<=strlen(dirList); i++) { //"bit stuffing" na string
                 dirList[i+1] = aux[i];
             }
-            dirList[3] = '3';
+            dirList[4] = 'a';
         }
         strcpy(position->fileName,dirList);
         position->next = malloc(sizeof(struct node));
